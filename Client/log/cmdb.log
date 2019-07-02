@@ -1,0 +1,9 @@
+发送时间：2019-06-26 11:31:57	服务器地址：http://192.168.2.234:8000/assets/report	 返回结果 :发送失败失败原因 ：'str' object has no attribute 'decode'
+发送时间：2019-06-26 11:58:09	服务器地址：http://192.168.2.234:8000/assets/report	 返回结果 :发送失败失败原因 ：'str' object has no attribute 'decode'
+发送时间：2019-06-26 11:59:03	服务器地址：http://192.168.2.234:8000/assets/report	 返回结果 :发送失败失败原因 ：POST data should be bytes, an iterable of bytes, or a file object. It cannot be of type str.
+发送时间：2019-06-26 11:59:23	服务器地址：http://192.168.2.234:8000/assets/report	 返回结果 :发送失败失败原因 ：<urlopen error [WinError 10061] 由于目标计算机积极拒绝，无法连接。>
+发送时间：2019-06-26 14:40:48	服务器地址：http://127.0.0.1:8000/assets/report	 返回结果 :发送失败失败原因 ：HTTP Error 500: Internal Server Error
+发送时间：2019-06-26 14:50:03	服务器地址：http://127.0.0.1:8000/assets/report	 返回结果 :发送失败失败原因 ：HTTP Error 500: Internal Server Error
+发送时间：2019-06-26 14:51:17	服务器地址：http://127.0.0.1:8000/assets/report	 返回结果 :发送失败失败原因 ：HTTP Error 404: Not Found
+发送时间：2019-06-26 14:51:43	服务器地址：http://127.0.0.1:8000/assets/report	 返回结果 :成功收到数据！
+发送时间：2019-07-01 21:25:34	服务器地址：http://127.0.0.1:8000/assets/report	 返回结果 :资产已经加入或更新待审批区！
