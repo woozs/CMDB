@@ -43,6 +43,16 @@ def log(log_type,msg=None,asset=None,new_asset=None,request=None):
         event.asset = new_asset
         event.detail = "审批失败!\n%s"%msg
         event.user = request.user
+
+    elif log_type == "update":
+        event.name = "%s<%s>:更新" % (asset.name, asset.sn)
+        event.asset = asset
+        event.detail = "资产更新成功"
+
+    elif log_type == "update_failed":
+        event.name = "%s<%s>:更新失败" % (new_asset.asset_type, new_asset.sn)
+        event.asset = new_asset
+        event.detail = "更新失败!\n%s" % msg
     event.save()
 
 class ApproveAsset:
@@ -186,3 +196,182 @@ class ApproveAsset:
         :return:
         """
         self.new_asset.delete()
+
+
+class UpdateAsset:
+
+    def __init__(self,request,asset,report_date):
+        self.request = request
+        self.asset = asset
+        self.report_data = report_date
+        self.asset_update()
+
+    def asset_update(self):
+        print(self.report_data['asset_type'])
+        func = getattr(self,"_%s_update"%self.report_data['asset_type'])
+        ret = func()
+        return ret
+
+    def _server_update(self):
+        try:
+            self._update_manufacturer()  # 更新厂商
+            self._update_server()  # 更新服务器
+            self._update_CPU()  # 更新CPU
+            self._update_RAM()  # 更新内存
+            self._update_disk()  # 更新硬盘
+            self._update_nic()  # 更新网卡
+            self.asset.save()
+        except Exception as e:
+            log('update_failed', msg=e, asset=self.asset, request=self.request)
+            print(e)
+            return False
+        else:
+            # 添加日志
+            log("update", asset=self.asset)
+            print("资产数据被更新!")
+            return True
+
+    def _update_manufacturer(self):
+        m = self.report_data.get('manufacturer')
+        if m:
+            manufacturer_obj, _ = models.Manufacturer.objects.get_or_create(name=m)
+            self.asset.manufacturer = manufacturer_obj
+        else:
+            self.asset.manufacturer = None
+        self.asset.manufacturer.save()
+
+    def _update_server(self):
+        """
+        更新服务器
+        """
+        self.asset.server.model = self.report_data.get('model')
+        self.asset.server.os_type = self.report_data.get('os_type')
+        self.asset.server.os_distribution = self.report_data.get('os_distribution')
+        self.asset.server.os_release = self.report_data.get('os_release')
+        self.asset.server.save()
+
+    def _update_CPU(self):
+        """
+        更新CPU信息
+        :return:
+        """
+        self.asset.cpu.cpu_model = self.report_data.get('cpu_model')
+        self.asset.cpu.cpu_count = self.report_data.get('cpu_count')
+        self.asset.cpu.cpu_core_count = self.report_data.get('cpu_core_count')
+        self.asset.cpu.save()
+
+    def _update_RAM(self):
+        """
+        更新内存信息。
+        使用集合数据类型中差的概念，处理不同的情况。
+        如果新数据有，但原数据没有，则新增；
+        如果新数据没有，但原数据有，则删除原来多余的部分；
+        如果新的和原数据都有，则更新。
+        在原则上，下面的代码应该写成一个复用的函数，
+        但是由于内存、硬盘、网卡在某些方面的差别，导致很难提取出重用的代码。
+        :return:
+        """
+        # 获取已有内存信息，并转成字典格式
+        old_rams = models.RAM.objects.filter(asset=self.asset)
+        old_rams_dict = dict()
+        if old_rams:
+            for ram in old_rams:
+                old_rams_dict[ram.slot] = ram
+        # 获取新数据中的内存信息，并转成字典格式
+        new_rams_list = self.report_data['ram']
+        new_rams_dict = dict()
+        if new_rams_list:
+            for item in new_rams_list:
+                new_rams_dict[item['slot']] = item
+
+        # 利用set类型的差集功能，获得需要删除的内存数据对象
+        need_deleted_keys = set(old_rams_dict.keys()) - set(new_rams_dict.keys())
+        if need_deleted_keys:
+            for key in need_deleted_keys:
+                old_rams_dict[key].delete()
+
+        # 需要新增或更新的
+        if new_rams_dict:
+            for key in new_rams_dict:
+                defaults = {
+                    'sn': new_rams_dict[key].get('sn'),
+                    'model': new_rams_dict[key].get('model'),
+                    'manufacturer': new_rams_dict[key].get('manufacturer'),
+                    'capacity': new_rams_dict[key].get('capacity', 0),
+                }
+                models.RAM.objects.update_or_create(asset=self.asset, slot=key, defaults=defaults)
+
+    def _update_disk(self):
+        """
+        更新硬盘信息。类似更新内存。
+        """
+        old_disks = models.Disk.objects.filter(asset=self.asset)
+        old_disks_dict = dict()
+        if old_disks:
+            for disk in old_disks:
+                old_disks_dict[disk.sn] = disk
+
+        new_disks_list = self.report_data['physical_disk_driver']
+        new_disks_dict = dict()
+        if new_disks_list:
+            for item in new_disks_list:
+                new_disks_dict[item['sn']] = item
+
+        # 需要删除的
+        need_deleted_keys = set(old_disks_dict.keys()) - set(new_disks_dict.keys())
+        if need_deleted_keys:
+            for key in need_deleted_keys:
+                old_disks_dict[key].delete()
+
+        # 需要新增或更新的
+        if new_disks_dict:
+            for key in new_disks_dict:
+                interface_type = new_disks_dict[key].get('interface_type', 'unknown')
+                if interface_type not in ['SATA', 'SAS', 'SCSI', 'SSD', 'unknown']:
+                    interface_type = 'unknown'
+                defaults = {
+                    'slot': new_disks_dict[key].get('slot'),
+                    'model': new_disks_dict[key].get('model'),
+                    'manufacturer': new_disks_dict[key].get('manufacturer'),
+                    'capacity': new_disks_dict[key].get('capacity', 0),
+                    'interface_type': interface_type,
+                }
+                models.Disk.objects.update_or_create(asset=self.asset, sn=key, defaults=defaults)
+
+    def _update_nic(self):
+        """
+        更新网卡信息。类似更新内存。
+        """
+        old_nics = models.NIC.objects.filter(asset=self.asset)
+        old_nics_dict = dict()
+        if old_nics:
+            for nic in old_nics:
+                old_nics_dict[nic.model + nic.mac] = nic
+
+        new_nics_list = self.report_data['nic']
+        new_nics_dict = dict()
+        if new_nics_list:
+            for item in new_nics_list:
+                new_nics_dict[item['model'] + item['mac']] = item
+
+        # 需要删除的
+        need_deleted_keys = set(old_nics_dict.keys()) - set(new_nics_dict.keys())
+        if need_deleted_keys:
+            for key in need_deleted_keys:
+                old_nics_dict[key].delete()
+
+        # 需要新增或更新的
+        if new_nics_dict:
+            for key in new_nics_dict:
+                if new_nics_dict[key].get('net_mask') and len(new_nics_dict[key].get('net_mask')) > 0:
+                    net_mask = new_nics_dict[key].get('net_mask')[0]
+                else:
+                    net_mask = ""
+                defaults = {
+                    'name': new_nics_dict[key].get('name'),
+                    'ip_address': new_nics_dict[key].get('ip_address'),
+                    'net_mask': net_mask,
+                }
+                models.NIC.objects.update_or_create(asset=self.asset, model=new_nics_dict[key]['model'],
+                                                    mac=new_nics_dict[key]['mac'], defaults=defaults)
+    print('更新成功！')
